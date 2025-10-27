@@ -46,6 +46,41 @@ impl CPU {
         (self.status & flag) != 0
     }
 
+    // 0xA9
+    fn lda(&mut self, value: u8) {
+        let value = value;
+        self.reg_a = value;
+        self.set_zero_and_negative_flags(value);
+    }
+
+    // 0xAA
+    fn tax(&mut self) {
+        let value: u8 = self.reg_a;
+        self.reg_x = value;
+        self.set_zero_and_negative_flags(value);
+    }
+
+    // 0xAA
+    fn inx(&mut self) {
+        let value = self.reg_x + 1;
+        self.reg_x = value;
+        self.set_zero_and_negative_flags(value);
+    }
+
+    fn set_zero_and_negative_flags(&mut self, value: u8) {
+        if value == 0x00 {
+            self.set_flag(ZERO_FLAG);
+        } else {
+            self.clear_flag(ZERO_FLAG);
+        }
+
+        if (value & 0x80) != 0 {
+            self.set_flag(NEGATIVE_FLAG);
+        } else {
+            self.clear_flag(NEGATIVE_FLAG);
+        }
+    }
+
     pub fn execute_program(&mut self, program: Vec<u8>) {
         self.program_counter = 0;
 
@@ -54,68 +89,14 @@ impl CPU {
             self.program_counter += 1;
 
             match opcode {
-                // LDA
                 0xA9 => {
                     let value = program[self.program_counter as usize];
                     self.program_counter += 1;
-
-                    if value == 0x00 {
-                        self.set_flag(ZERO_FLAG);
-                    } else {
-                        self.clear_flag(ZERO_FLAG);
-                    }
-
-                    if (value & 0x80) != 0 {
-                        self.set_flag(NEGATIVE_FLAG);
-                    } else {
-                        self.clear_flag(NEGATIVE_FLAG);
-                    }
-
-                    self.reg_a = value;
+                    self.lda(value);
                 }
-
-                // TAX
-                0xAA => {
-                    let value: u8 = self.reg_a;
-
-                    if value == 0x00 {
-                        self.set_flag(ZERO_FLAG);
-                    } else {
-                        self.clear_flag(ZERO_FLAG);
-                    }
-
-                    if (value & 0x80) != 0 {
-                        self.set_flag(NEGATIVE_FLAG);
-                    } else {
-                        self.clear_flag(NEGATIVE_FLAG);
-                    }
-
-                    self.reg_x = value;
-                }
-
-                //INX
-                0xE8 => {
-                    let value = self.reg_x + 1;
-
-                    if value == 0x00 {
-                        self.set_flag(ZERO_FLAG);
-                    } else {
-                        self.clear_flag(ZERO_FLAG);
-                    }
-
-                    if (value & 0x80) != 0 {
-                        self.set_flag(NEGATIVE_FLAG);
-                    } else {
-                        self.clear_flag(NEGATIVE_FLAG);
-                    }
-
-                    self.reg_x = value;
-                }
-
-                // BRK
-                0x00 => {
-                    return;
-                }
+                0xAA => self.tax(),
+                0xE8 => self.inx(),
+                0x00 => return,
                 _ => todo!(),
             }
         }
