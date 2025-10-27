@@ -74,6 +74,44 @@ impl CPU {
                     self.reg_a = value;
                 }
 
+                // TAX
+                0xAA => {
+                    let value: u8 = self.reg_a;
+
+                    if value == 0x00 {
+                        self.set_flag(ZERO_FLAG);
+                    } else {
+                        self.clear_flag(ZERO_FLAG);
+                    }
+
+                    if (value & 0x80) != 0 {
+                        self.set_flag(NEGATIVE_FLAG);
+                    } else {
+                        self.clear_flag(NEGATIVE_FLAG);
+                    }
+
+                    self.reg_x = value;
+                }
+
+                //INX
+                0xE8 => {
+                    let value = self.reg_x + 1;
+
+                    if value == 0x00 {
+                        self.set_flag(ZERO_FLAG);
+                    } else {
+                        self.clear_flag(ZERO_FLAG);
+                    }
+
+                    if (value & 0x80) != 0 {
+                        self.set_flag(NEGATIVE_FLAG);
+                    } else {
+                        self.clear_flag(NEGATIVE_FLAG);
+                    }
+
+                    self.reg_x = value;
+                }
+
                 // BRK
                 0x00 => {
                     return;
@@ -143,6 +181,62 @@ mod test {
         cpu.execute_program(vec![0xA9, 0x9C, 0x00]);
         assert_eq!(cpu.reg_a, 0x9C);
         assert!(cpu.status & ZERO_FLAG == 0);
+        assert!(cpu.status & NEGATIVE_FLAG != 0);
+    }
+
+    #[test]
+    fn test_0xaa_tax_move_a_to_x() {
+        let mut cpu = CPU::new();
+        cpu.reg_a = 10;
+        cpu.execute_program(vec![0xaa, 0x00]);
+        assert_eq!(cpu.reg_x, cpu.reg_a);
+    }
+
+    #[test]
+    fn test_0xaa_tax_move_a_to_x_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.reg_a = 0;
+        cpu.execute_program(vec![0xaa, 0x00]);
+        cpu.debug_state();
+
+        assert_eq!(cpu.reg_x, cpu.reg_a);
+        assert!(cpu.status & ZERO_FLAG != 0);
+    }
+
+    #[test]
+    fn test_0xaa_tax_move_a_to_x_negative_flag() {
+        let mut cpu = CPU::new();
+        cpu.reg_a = 10 | 0x80;
+        cpu.execute_program(vec![0xaa, 0x00]);
+        assert_eq!(cpu.reg_x, cpu.reg_a);
+        assert!(cpu.status & NEGATIVE_FLAG != 0);
+    }
+
+    #[test]
+    fn test_0xe8_inx_inc_x() {
+        let mut cpu = CPU::new();
+        cpu.reg_x = 10;
+        cpu.execute_program(vec![0xe8, 0x00]);
+        assert_eq!(cpu.reg_x, 11);
+    }
+
+    #[test]
+    fn test_0xe8_inx_inc_x_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.reg_x = 0xFF;
+        cpu.debug_state();
+        cpu.execute_program(vec![0xe8, 0x00]);
+        cpu.debug_state();
+        assert_eq!(cpu.reg_x, 0);
+        assert!(cpu.status & ZERO_FLAG != 0);
+    }
+
+    #[test]
+    fn test_0xe8_inx_inc_x_negative_flag() {
+        let mut cpu = CPU::new();
+        cpu.reg_x = 10 | 0x80;
+        cpu.execute_program(vec![0xe8, 0x00]);
+        assert_eq!(cpu.reg_x, (10 | 0x80) + 1);
         assert!(cpu.status & NEGATIVE_FLAG != 0);
     }
 }
