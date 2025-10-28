@@ -1,3 +1,28 @@
+use crate::opcodes;
+
+#[derive(Debug, Clone, Copy)]
+pub enum AddressingMode {
+    Immediate,
+    ZeroPage,
+    ZeroPageX,
+    ZeroPageY,
+    Absolute,
+    AbsoluteX,
+    AbsoluteY,
+    IndirectX,
+    IndirectY,
+    None,
+}
+
+const CARRY_FLAG: u8 = 0b00000001;
+const ZERO_FLAG: u8 = 0b00000010;
+const IRQ_DISABLE_FLAG: u8 = 0b00000100;
+const DECIMAL_FLAG: u8 = 0b00001000;
+const INDEX_REGISTER_SELECT_FLAG: u8 = 0b00010000;
+const ACCUMULATOR_SELECT_FLAG: u8 = 0b00100000;
+const OVERFLOW_FLAG: u8 = 0b01000000;
+const NEGATIVE_FLAG: u8 = 0b10000000;
+
 #[derive(Debug)]
 pub struct CPU {
     pub reg_a: u8,
@@ -9,28 +34,6 @@ pub struct CPU {
 
     pub memory: [u8; 0xFFFF],
 }
-
-#[derive(Debug)]
-pub enum AddressingMode {
-    Immediate,
-    ZeroPage,
-    ZeroPageX,
-    ZeroPageY,
-    Absolute,
-    AbsoluteX,
-    AbsoluteY,
-    IndirectX,
-    IndirectY,
-}
-
-const CARRY_FLAG: u8 = 0b00000001;
-const ZERO_FLAG: u8 = 0b00000010;
-const IRQ_DISABLE_FLAG: u8 = 0b00000100;
-const DECIMAL_FLAG: u8 = 0b00001000;
-const INDEX_REGISTER_SELECT_FLAG: u8 = 0b00010000;
-const ACCUMULATOR_SELECT_FLAG: u8 = 0b00100000;
-const OVERFLOW_FLAG: u8 = 0b01000000;
-const NEGATIVE_FLAG: u8 = 0b10000000;
 
 impl CPU {
     pub fn new() -> Self {
@@ -131,13 +134,17 @@ impl CPU {
         }
     }
 
-    // 0xA9
     fn lda(&mut self, mode: &AddressingMode) {
         let address = self.get_operand_address(mode);
         let value = self.read_mem(address);
 
         self.reg_a = value;
         self.set_zero_and_negative_flags(value);
+    }
+
+    fn sta(&mut self, mode: &AddressingMode) {
+        let address = self.get_operand_address(mode);
+        self.write_mem(address, self.reg_a);
     }
 
     // 0xAA
@@ -147,7 +154,6 @@ impl CPU {
         self.set_zero_and_negative_flags(value);
     }
 
-    // 0xAA
     fn inx(&mut self) {
         let value = self.reg_x + 1;
         self.reg_x = value;
@@ -174,49 +180,29 @@ impl CPU {
     }
 
     fn run(&mut self) {
-        loop {
-            let opcode = self.memory[self.program_counter as usize];
-            self.program_counter += 1;
+        let ref opcodes = *opcodes::OPCODES_MAP;
 
-            match opcode {
-                // LDA
-                0xa9 => {
-                    self.lda(&AddressingMode::Immediate);
-                    self.program_counter += 1;
-                }
-                0xa5 => {
-                    self.lda(&AddressingMode::ZeroPage);
-                    self.program_counter += 1;
-                }
-                0xb5 => {
-                    self.lda(&AddressingMode::ZeroPageX);
-                    self.program_counter += 1;
-                }
-                0xad => {
-                    self.lda(&AddressingMode::Absolute);
-                    self.program_counter += 2;
-                }
-                0xbd => {
-                    self.lda(&AddressingMode::AbsoluteX);
-                    self.program_counter += 2;
-                }
-                0xb9 => {
-                    self.lda(&AddressingMode::AbsoluteY);
-                    self.program_counter += 2;
-                }
-                0xa1 => {
-                    self.lda(&AddressingMode::IndirectX);
-                    self.program_counter += 1;
-                }
-                0xb1 => {
-                    self.lda(&AddressingMode::IndirectY);
-                    self.program_counter += 1;
-                }
+        loop {
+            let code = self.read_mem(self.program_counter);
+            self.program_counter += 1;
+            let program_counter_snapshot = self.program_counter;
+
+            let opcode = opcodes
+                .get(&code)
+                .expect(&format!("OpCode {:x} is not implemented yet!", code));
+
+            match code {
+                0xa9 | 0xa5 | 0xb5 | 0xad | 0xbd | 0xb9 | 0xa1 | 0xb1 => self.lda(&opcode.mode),
+                0x85 | 0x95 | 0x8d | 0x9d | 0x99 | 0x81 | 0x91 => self.sta(&opcode.mode),
 
                 0xaa => self.tax(),
                 0xe8 => self.inx(),
                 0x00 => return,
                 _ => todo!(),
+            }
+
+            if program_counter_snapshot == self.program_counter {
+                self.program_counter += (opcode.bytes - 1) as u16;
             }
         }
     }
@@ -325,6 +311,37 @@ mod test {
 
         assert_eq!(cpu.reg_a, 0x85);
         assert!(cpu.status & NEGATIVE_FLAG != 0);
+    }
+
+    #[test]
+    fn test_0x85_sta_copy_reg_a_to_memory() {
+        let mut cpu = CPU::new();
+        cpu.load_program(vec![0x85, 0xBA, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0x4F;
+        cpu.run();
+        assert_eq!(cpu.read_mem(0xBA), 0x4F);
+    }
+
+    #[test]
+    fn test_0x95_sta_copy_reg_a_to_memory() {
+        let mut cpu = CPU::new();
+        cpu.load_program(vec![0x95, 0xB0, 0x00]);
+        cpu.reset();
+        cpu.reg_x = 0x03;
+        cpu.reg_a = 0x4A;
+        cpu.run();
+        assert_eq!(cpu.read_mem(0xB3), 0x4A);
+    }
+
+    #[test]
+    fn test_0x8d_sta_copy_reg_a_to_memory() {
+        let mut cpu = CPU::new();
+        cpu.load_program(vec![0x8D, 0xB0, 0x22, 0x00]);
+        cpu.reset();
+        cpu.reg_a = 0x4A;
+        cpu.run();
+        assert_eq!(cpu.read_mem_u16(0x22B0), 0x4A);
     }
 
     #[test]
