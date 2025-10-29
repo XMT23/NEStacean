@@ -57,6 +57,7 @@ impl CPU {
         self.status = 0x00;
 
         self.program_counter = self.read_mem_u16(0xFFFC);
+        self.stack_pointer = 0xFF;
     }
 
     #[inline]
@@ -96,6 +97,24 @@ impl CPU {
         let [low, high] = value.to_le_bytes();
         self.memory[address as usize] = low;
         self.memory[address.wrapping_add(1) as usize] = high;
+    }
+
+    // INFO: The stack goes from $0100 to $01FF
+    // It is a descending empty stack: it grows downwards and first writes and
+    // the stack pointer is moved after pushing and before pulling
+
+    #[inline]
+    fn stack_push(&mut self, value: u8) {
+        let address = 0x0100 + (self.stack_pointer as u16);
+        self.write_mem(address, value);
+        self.stack_pointer = self.stack_pointer.wrapping_sub(1);
+    }
+
+    #[inline]
+    fn stack_pull(&mut self) -> u8 {
+        self.stack_pointer = self.stack_pointer.wrapping_add(1);
+        let address = 0x0100 + (self.stack_pointer as u16);
+        self.read_mem(address)
     }
 
     fn get_operand_address(&mut self, mode: &AddressingMode) -> u16 {
@@ -248,6 +267,15 @@ impl CPU {
 
     fn jsr(&mut self, mode: &AddressingMode) {
         let address = self.get_operand_address(mode);
+
+        self.program_counter += 1;
+        // RTS adds one to the PC
+        let return_address = ((self.program_counter >> 8) | (self.program_counter & 0xFF));
+
+        self.stack_push(((self.program_counter >> 8) as u8));
+        self.stack_push(((self.program_counter & 0xFF) as u8));
+
+        self.program_counter = address;
     }
 
     fn dec(&mut self, mode: &AddressingMode) {
@@ -293,6 +321,14 @@ impl CPU {
 
         self.reg_y = value;
         self.set_zero_and_negative_flags(value);
+    }
+
+    fn rts(&mut self) {
+        let low = self.stack_pull();
+        let high = self.stack_pull();
+        let return_address = (high as u16) << 8 | (low as u16);
+
+        self.program_counter = return_address + 1;
     }
 
     fn sta(&mut self, mode: &AddressingMode) {
@@ -369,6 +405,8 @@ impl CPU {
                 .get(&code)
                 .expect(&format!("OpCode {:x} is not implemented yet!", code));
 
+            println!("{:?} at {:x}", opcode, self.program_counter - 1);
+
             match code {
                 0x29 | 0x25 | 0x35 | 0x2d | 0x3d | 0x39 | 0x21 | 0x31 => self.and(&opcode.mode),
                 0x0a | 0x06 | 0x16 | 0x0e | 0x1e => self.asl(&opcode.mode),
@@ -384,6 +422,7 @@ impl CPU {
                 0xa9 | 0xa5 | 0xb5 | 0xad | 0xbd | 0xb9 | 0xa1 | 0xb1 => self.lda(&opcode.mode),
                 0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => self.ldx(&opcode.mode),
                 0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => self.ldy(&opcode.mode),
+                0x60 => self.rts(),
                 0x85 | 0x95 | 0x8d | 0x9d | 0x99 | 0x81 | 0x91 => self.sta(&opcode.mode),
                 0x86 | 0x96 | 0x8e => self.stx(&opcode.mode),
                 0x84 | 0x94 | 0x8c => self.sty(&opcode.mode),
@@ -586,6 +625,7 @@ mod test {
         assert!(cpu.status & NEGATIVE_FLAG != 0); // Result is negative
     }
 
+    #[test]
     fn test_0xe0_cpx_immediate_less() {
         let mut cpu = CPU::new();
         cpu.load_program(vec![0xe0, 0x50, 0x00]);
@@ -736,6 +776,84 @@ mod test {
     }
 
     #[test]
+    fn test_0x20_jsr_and_0x60_rts() {
+        let mut cpu = CPU::new();
+        cpu.load_program(vec![
+            0xa9, 0x00, // $8000: LDA #$00
+            0x20, 0x0A, 0x80, // $8002: JSR $8009
+            0xa9, 0x33, // $8005: LDA #$33
+            0x00, // $8007: BRK
+            0xa9, 0xff, // $8008: padding
+            0xa9, 0x11, // $800A: LDA #$11
+            0xe8, // $800C: INX
+            0x60, // $800D: RTS
+        ]);
+        cpu.reset();
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x33);
+        assert_eq!(cpu.reg_x, 1);
+    }
+
+    #[test]
+    fn test_0x20_jsr_pushes_correct_return_address() {
+        let mut cpu = CPU::new();
+        cpu.load_program(vec![
+            0x20, 0x06, 0x80, // $8000: JSR $8006
+            0x00, // $8003: BRK
+            0xff, 0xff, // padding
+            0xa9, 0x42, // $8006: LDA #$42
+            0x60, // $8008: RTS
+        ]);
+        cpu.reset();
+        cpu.run();
+
+        // Debe haber vuelto y ejecutado BRK
+        assert_eq!(cpu.reg_a, 0x42);
+    }
+
+    #[test]
+    fn test_stack_operations() {
+        let mut cpu = CPU::new();
+        cpu.reset();
+
+        assert_eq!(cpu.stack_pointer, 0xFF);
+
+        cpu.stack_push(0x12);
+        assert_eq!(cpu.stack_pointer, 0xFE);
+        cpu.stack_push(0x34);
+        assert_eq!(cpu.stack_pointer, 0xFD);
+
+        assert_eq!(cpu.stack_pull(), 0x34);
+        assert_eq!(cpu.stack_pointer, 0xFE);
+        assert_eq!(cpu.stack_pull(), 0x12);
+        assert_eq!(cpu.stack_pointer, 0xFF);
+    }
+
+    #[test]
+    fn test_nested_jsr() {
+        let mut cpu = CPU::new();
+        cpu.load_program(vec![
+            0x20, 0x09, 0x80, // $8000: JSR 8009
+            0xa9, 0x99, // $8003: LDA #$99
+            0x00, // $8005: BRK
+            0xff, 0xff, 0xff, // padding
+            0xa9, 0x11, // $8009: LDA #$11
+            0x20, 0x0f, 0x80, // $800B: JSR 800F
+            0xe8, // $800E: INX
+            0x60, // $800F: RTS
+            0xa9, 0x22, // $8010: LDA #$22
+            0xe8, // $8012: INX
+            0x60, // $8013: RTS
+        ]);
+        cpu.reset();
+        cpu.run();
+
+        assert_eq!(cpu.reg_a, 0x99);
+        assert_eq!(cpu.reg_x, 1);
+    }
+
+    #[test]
     fn test_0x85_sta_zero_page() {
         let mut cpu = CPU::new();
         cpu.load_program(vec![0x85, 0xBA, 0x00]);
@@ -820,7 +938,6 @@ mod test {
     #[test]
     fn test_0x6c_jmp_indirect() {
         let mut cpu = CPU::new();
-        // Guardamos la dirección de salto en $0120
         cpu.write_mem(0x0120, 0x05);
         cpu.write_mem(0x0121, 0x80);
 
@@ -848,8 +965,8 @@ mod test {
         ]);
         cpu.reset();
         cpu.run();
-        assert_eq!(cpu.reg_a, 0x10); // No se modificó
-        assert_eq!(cpu.reg_x, 1); // INX se ejecutó
+        assert_eq!(cpu.reg_a, 0x10);
+        assert_eq!(cpu.reg_x, 1);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use crate::cpu::AddressingMode;
 use std::collections::{HashMap, hash_map};
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct OpCode {
     pub opcode: u8,             // 0xa9
     pub mnemonic: &'static str, // LDA
@@ -114,6 +114,8 @@ lazy_static! {
         OpCode::new(0xB4, "LDY", 2, 4, AddressingMode::ZeroPageX),
         OpCode::new(0xAC, "LDY", 3, 4, AddressingMode::Absolute),
         OpCode::new(0xBC, "LDY", 3, 4 /* 5 cycles if page crossed */, AddressingMode::AbsoluteX),
+
+        OpCode::new(0x60, "RTS", 1, 6, AddressingMode::None),
 
         OpCode::new(0x85, "STA", 2, 3, AddressingMode::ZeroPage),
         OpCode::new(0x95, "STA", 2, 4, AddressingMode::ZeroPageX),
