@@ -246,6 +246,10 @@ impl CPU {
         self.program_counter = address;
     }
 
+    fn jsr(&mut self, mode: &AddressingMode) {
+        let address = self.get_operand_address(mode);
+    }
+
     fn dec(&mut self, mode: &AddressingMode) {
         let address = self.get_operand_address(mode);
         let value = self.read_mem(address);
@@ -373,6 +377,7 @@ impl CPU {
                 0xe0 | 0xe4 | 0xec => self.cpx(&opcode.mode),
                 0xc0 | 0xc4 | 0xcc => self.cpy(&opcode.mode),
                 0x4c | 0x6c => self.jmp(&opcode.mode),
+                0x20 => self.jsr(&opcode.mode),
                 0xc6 | 0xd6 | 0xce | 0xde => self.dec(&opcode.mode),
                 0xca => self.dex(),
                 0x88 => self.dey(),
@@ -801,11 +806,10 @@ mod test {
     #[test]
     fn test_0x4c_jmp_absolute() {
         let mut cpu = CPU::new();
-        // JMP a 0x8005, luego LDA #$42
         cpu.load_program(vec![
             0x4c, 0x05, 0x80, // JMP $8005
-            0xa9, 0xff, // LDA #$FF (esto se salta)
-            0xa9, 0x42, // LDA #$42 (aquí salta)
+            0xa9, 0xff, // LDA #$FF
+            0xa9, 0x42, // LDA #$42
             0x00, // BRK
         ]);
         cpu.reset();
@@ -817,14 +821,13 @@ mod test {
     fn test_0x6c_jmp_indirect() {
         let mut cpu = CPU::new();
         // Guardamos la dirección de salto en $0120
-        cpu.write_mem(0x0120, 0x05); // low byte
-        cpu.write_mem(0x0121, 0x80); // high byte -> apunta a $8005
+        cpu.write_mem(0x0120, 0x05);
+        cpu.write_mem(0x0121, 0x80);
 
-        // JMP ($0120), luego LDA #$42
         cpu.load_program(vec![
             0x6c, 0x20, 0x01, // JMP ($0120)
-            0xa9, 0xff, // LDA #$FF (esto se salta)
-            0xa9, 0x42, // LDA #$42 (aquí salta)
+            0xa9, 0xff, // LDA #$FF
+            0xa9, 0x42, // LDA #$42
             0x00, // BRK
         ]);
         cpu.reset();
@@ -837,9 +840,9 @@ mod test {
         let mut cpu = CPU::new();
         cpu.load_program(vec![
             0xa9, 0x10, // LDA #$10
-            0x4c, 0x08, 0x80, // JMP $8008 (salta 3 bytes adelante)
-            0xa9, 0x20, // LDA #$20 (se salta)
-            0xa9, 0x30, // LDA #$30 (se salta)
+            0x4c, 0x09, 0x80, // JMP $8009
+            0xa9, 0x20, // LDA #$20
+            0xa9, 0x30, // LDA #$30
             0xe8, // INX
             0x00, // BRK
         ]);
