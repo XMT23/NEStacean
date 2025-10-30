@@ -30,7 +30,14 @@ impl OpCode {
 
 lazy_static! {
     pub static ref CPU_OPCODES: Vec<OpCode> = vec![
-        // TODO: ADC
+        OpCode::new(0x69, "ADC", 2, 2, AddressingMode::Immediate),
+        OpCode::new(0x65, "ADC", 2, 3, AddressingMode::ZeroPage),
+        OpCode::new(0x75, "ADC", 2, 4, AddressingMode::ZeroPageX),
+        OpCode::new(0x6D, "ADC", 3, 4, AddressingMode::Absolute),
+        OpCode::new(0x7D, "ADC", 3, 4 /* 5 cycles if page crossed */, AddressingMode::AbsoluteX),
+        OpCode::new(0x79, "ADC", 3, 4 /* 5 cycles if page crossed */, AddressingMode::AbsoluteY),
+        OpCode::new(0x61, "ADC", 2, 6, AddressingMode::IndirectX),
+        OpCode::new(0x71, "ADC", 2, 5 /* 6 cycles if page crossed */, AddressingMode::IndirectY),
 
         OpCode::new(0x29, "AND", 2, 2, AddressingMode::Immediate),
         OpCode::new(0x25, "AND", 2, 3, AddressingMode::ZeroPage),
@@ -51,6 +58,8 @@ lazy_static! {
         OpCode::new(0x2C, "BIT", 3, 4, AddressingMode::Absolute),
 
         OpCode::new(0x00, "BRK", 1, 7, AddressingMode::None),
+
+        OpCode::new(0x18, "CLC", 1, 2, AddressingMode::None),
 
         OpCode::new(0xC9, "CMP", 2, 2, AddressingMode::Immediate),
         OpCode::new(0xC5, "CMP", 2, 3, AddressingMode::ZeroPage),
@@ -77,6 +86,8 @@ lazy_static! {
         OpCode::new(0xCA, "DEX", 1, 2, AddressingMode::None),
 
         OpCode::new(0x88, "DEY", 1, 2, AddressingMode::None),
+
+        OpCode::new(0x38, "SEC", 1, 2, AddressingMode::None),
 
         OpCode::new(0xAA, "TAX", 1, 2, AddressingMode::None),
 
@@ -114,6 +125,8 @@ lazy_static! {
         OpCode::new(0xB4, "LDY", 2, 4, AddressingMode::ZeroPageX),
         OpCode::new(0xAC, "LDY", 3, 4, AddressingMode::Absolute),
         OpCode::new(0xBC, "LDY", 3, 4 /* 5 cycles if page crossed */, AddressingMode::AbsoluteX),
+
+        OpCode::new(0xEA, "NOP", 1, 2, AddressingMode::None),
 
         OpCode::new(0x60, "RTS", 1, 6, AddressingMode::None),
 
