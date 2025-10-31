@@ -79,7 +79,7 @@ impl CPU {
     }
 
     #[inline]
-    fn read_mem(&mut self, address: u16) -> u8 {
+    pub fn read_mem(&mut self, address: u16) -> u8 {
         self.memory[address as usize]
     }
 
@@ -91,7 +91,7 @@ impl CPU {
     }
 
     #[inline]
-    fn write_mem(&mut self, address: u16, value: u8) {
+    pub fn write_mem(&mut self, address: u16, value: u8) {
         self.memory[address as usize] = value;
     }
 
@@ -224,52 +224,31 @@ impl CPU {
         self.set_zero_and_negative_flags(result);
     }
 
+    fn branch(&mut self) {
+        let offset = self.read_mem(self.program_counter) as i8;
+        let address = self
+            .program_counter
+            .wrapping_add(1)
+            .wrapping_add(offset as u16);
+        self.program_counter = address;
+    }
+
     fn bcc(&mut self) {
-        if self.get_flag(CARRY_FLAG) {
-            return;
+        if !self.get_flag(CARRY_FLAG) {
+            self.branch();
         }
-
-        // Branch only has relative AddressingMode
-        let offset = self.read_mem(self.program_counter) as i16;
-        println!("Offset: {:x}", offset as u16);
-        let base = self.program_counter.wrapping_sub(1) as i16;
-        println!("Base: {:x}", base as u16);
-        let target = base.wrapping_add(offset) as u16;
-        println!("Target: {:x}", target);
-
-        self.program_counter = target;
     }
 
     fn bcs(&mut self) {
-        if !self.get_flag(CARRY_FLAG) {
-            return;
+        if self.get_flag(CARRY_FLAG) {
+            self.branch();
         }
-
-        // Branch only has relative AddressingMode
-        let offset = self.read_mem(self.program_counter) as i16;
-        println!("Offset: {:x}", offset as u16);
-        let base = self.program_counter.wrapping_sub(1) as i16;
-        println!("Base: {:x}", base as u16);
-        let target = base.wrapping_add(offset) as u16;
-        println!("Target: {:x}", target);
-
-        self.program_counter = target;
     }
 
     fn beq(&mut self) {
-        if !self.get_flag(ZERO_FLAG) {
-            return;
+        if self.get_flag(ZERO_FLAG) {
+            self.branch();
         }
-
-        // Branch only has relative AddressingMode
-        let offset = self.read_mem(self.program_counter) as i16;
-        println!("Offset: {:x}", offset as u16);
-        let base = self.program_counter.wrapping_sub(1) as i16;
-        println!("Base: {:x}", base as u16);
-        let target = base.wrapping_add(offset) as u16;
-        println!("Target: {:x}", target);
-
-        self.program_counter = target;
     }
 
     fn bit(&mut self, mode: &AddressingMode) {
@@ -297,35 +276,15 @@ impl CPU {
     }
 
     fn bne(&mut self) {
-        if self.get_flag(ZERO_FLAG) {
-            return;
+        if !self.get_flag(ZERO_FLAG) {
+            self.branch();
         }
-
-        // Branch only has relative AddressingMode
-        let offset = self.read_mem(self.program_counter) as i16;
-        println!("Offset: {:x}", offset as u16);
-        let base = self.program_counter.wrapping_sub(1) as i16;
-        println!("Base: {:x}", base as u16);
-        let target = base.wrapping_add(offset) as u16;
-        println!("Target: {:x}", target);
-
-        self.program_counter = target;
     }
 
     fn bpl(&mut self) {
-        if self.get_flag(NEGATIVE_FLAG) {
-            return;
+        if !self.get_flag(NEGATIVE_FLAG) {
+            self.branch();
         }
-
-        // Branch only has relative AddressingMode
-        let offset = self.read_mem(self.program_counter) as i16;
-        println!("Offset: {:x}", offset as u16);
-        let base = self.program_counter.wrapping_sub(1) as i16;
-        println!("Base: {:x}", base as u16);
-        let target = base.wrapping_add(offset) as u16;
-        println!("Target: {:x}", target);
-
-        self.program_counter = target;
     }
 
     fn clc(&mut self) {
@@ -579,15 +538,25 @@ impl CPU {
         }
     }
 
-    fn load_program(&mut self, program: Vec<u8>) {
-        self.memory[0x8000..(0x8000 + program.len())].copy_from_slice(&program);
-        self.write_mem_u16(0xFFFC, 0x8000);
+    pub fn load_program(&mut self, program: Vec<u8>) {
+        // WARN: We have changed this to run the Snake Game!
+        self.memory[0x0600..(0x0600 + program.len())].copy_from_slice(&program);
+        self.write_mem_u16(0xFFFC, 0x0600);
     }
 
-    fn run(&mut self) {
+    pub fn run(&mut self) {
+        self.run_with_callback(|_| {});
+    }
+
+    pub fn run_with_callback<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut CPU),
+    {
         let ref opcodes = *opcodes::OPCODES_MAP;
 
         loop {
+            callback(self);
+
             let code = self.read_mem(self.program_counter);
             self.program_counter += 1;
             let program_counter_snapshot = self.program_counter;
