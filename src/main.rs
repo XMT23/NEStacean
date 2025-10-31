@@ -1,4 +1,6 @@
+mod bus;
 mod cpu;
+mod memory;
 mod opcodes;
 
 #[macro_use]
@@ -11,6 +13,9 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
 
 use cpu::CPU;
+use memory::Memory;
+
+use crate::bus::Bus;
 
 fn color(byte: u8) -> Color {
     match byte {
@@ -124,7 +129,8 @@ fn main() {
     ];
 
     //load the game
-    let mut cpu = CPU::new();
+    let mut bus = Bus::new();
+    let mut cpu = CPU::new(bus);
     cpu.load_program(game_code);
     cpu.reset();
 
